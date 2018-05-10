@@ -39,7 +39,7 @@ class SVI():
             log_likelihood_global(beta)
             log_likelihood_local(z, idx)
             sample_global()
-            sample_local(idx)
+            sample_local(beta, idx)
              
         Args:
             num_samples: number of samples used for approximation
@@ -56,7 +56,7 @@ class SVI():
         for i in range(num_samples):
             
             beta = self.var_distr.sample_global()
-            global_const_term = torch.zeros(1, requires_grad=False)
+            global_const_term = torch.zeros(1, requires_grad=True)
             
             for idx in batch_indices:
                 x = self.data[idx]
@@ -64,22 +64,24 @@ class SVI():
                 
                 local_const_term = self.prior_distr.log_likelihood_local(z, beta) + \
                                    self.prior_distr.log_likelihood_joint(x, z, beta) - \
-                                   self.var_distr.log_likelihood_local(z, idx)
-                local_const_term *= self.data.shape[0]
+                                   self.var_distr.log_likelihood_local(z, idx).data
+                local_const_term = local_const_term * self.data.shape[0]
                 
                 local_var_term = self.var_distr.log_likelihood_local(z, idx)
                 
-                local_loss = local_loss + local_var_term * local_const_term.data
+                local_loss = local_loss + local_var_term * local_const_term
                 
-                global_const_term += self.prior_distr.log_likelihood_local(z, beta) + \
-                                     self.prior_distr.log_likelihood_joint(x, z, beta)
+                global_const_term = global_const_term + \
+                					self.prior_distr.log_likelihood_local(z, beta) + \
+                                    self.prior_distr.log_likelihood_joint(x, z, beta)
             
-            global_const_term *= self.data.shape[0] / batch_indices.shape[0]
-            global_const_term += self.prior_distr.log_likelihood_global(beta) - \
-                                 self.var_distr.log_likelihood_global(beta)
+            global_const_term = global_const_term * self.data.shape[0] / batch_indices.shape[0]
+            global_const_term = global_const_term + \
+            					self.prior_distr.log_likelihood_global(beta) - \
+                                self.var_distr.log_likelihood_global(beta).data
             
             global_var_term = self.var_distr.log_likelihood_global(beta)
-            global_loss = global_loss + global_var_term * global_const_term.data
+            global_loss = global_loss + global_var_term * global_const_term
                     
         loss = -(global_loss + local_loss) / num_samples
         
@@ -96,8 +98,8 @@ class SVI():
         var_distr required methods: 
             log_likelihood_global(beta)
             log_likelihood_local(z, idx)
-            sample_global(num_samples)
-            sample_local(idx, num_samples)
+            sample_global()
+            sample_local(beta, idx)
         
         var_distr required attributes:
             global_parameters: list of global parameters
@@ -114,10 +116,11 @@ class SVI():
         '''
         
         
-        # TODO: add checking that num_samples > 1
+        if num_samples == 1:
+        	raise Exception('BB2 loss is avaliable only with num_samples > 1')
         
         global_samples = [self.var_distr.sample_global() for _ in range(num_samples)]
-        
+
         global_h = [torch.autograd.grad(self.var_distr.log_likelihood_global(global_samples[s]), 
                                         self.var_distr.global_parameters,
                                         retain_graph=True) for s in range(num_samples)]
@@ -150,6 +153,7 @@ class SVI():
         global_a = self.count_a_(global_h, global_f)
         local_a = [self.count_a_(local_h[i], local_f[i]) for i, idx in enumerate(batch_indices)]
         
+
         global_loss = torch.zeros(1, requires_grad=True)
         local_loss = torch.zeros(1, requires_grad=True)
         
@@ -163,24 +167,26 @@ class SVI():
                 
                 local_const_term = self.prior_distr.log_likelihood_local(z, beta) + \
                                    self.prior_distr.log_likelihood_joint(x, z, beta) - \
-                                   self.var_distr.log_likelihood_local(z, idx)
-                local_const_term *= self.data.shape[0]
-                local_const_term -= local_a[i]
+                                   self.var_distr.log_likelihood_local(z, idx).data
+                local_const_term = local_const_term * self.data.shape[0]
+                local_const_term = local_const_term - local_a[i]
                 
                 local_var_term = self.var_distr.log_likelihood_local(z, idx)
                 
-                local_loss = local_loss + local_var_term * local_const_term.data
+                local_loss = local_loss + local_var_term * local_const_term
                 
-                global_const_term += self.prior_distr.log_likelihood_local(z, beta) + \
-                                     self.prior_distr.log_likelihood_joint(x, z, beta)
+                global_const_term = global_const_term + \
+                					self.prior_distr.log_likelihood_local(z, beta) + \
+                                    self.prior_distr.log_likelihood_joint(x, z, beta)
             
-            global_const_term *= self.data.shape[0] / batch_indices.shape[0]
-            global_const_term += self.prior_distr.log_likelihood_global(beta) - \
-                                 self.var_distr.log_likelihood_global(beta) - \
-                                 global_a
+            global_const_term = global_const_term * self.data.shape[0] / batch_indices.shape[0]
+            global_const_term = global_const_term + \
+            					self.prior_distr.log_likelihood_global(beta) - \
+                                self.var_distr.log_likelihood_global(beta).data - \
+                                global_a
             
             global_var_term = self.var_distr.log_likelihood_global(beta)
-            global_loss = global_loss + global_var_term * global_const_term.data
+            global_loss = global_loss + global_var_term * global_const_term
                     
         loss = -(global_loss + local_loss) / num_samples
         
@@ -227,7 +233,10 @@ class SVI():
         var_term = sum(torch.sum(var) for var in h_var)
         cov_term = sum(torch.sum(cov) for cov in f_h_cov)
         
-        a = cov_term / var_term
+        if var_term == 0:
+        	a = 0
+        else:
+        	a = cov_term / var_term
         
         return a
         
@@ -267,7 +276,7 @@ class SVI():
             for batch_indices in indices:
                 self.opt.zero_grad()
                 loss = loss_func(num_samples, batch_indices)
-                loss.backward()
+                loss.backward(retain_graph=True)
                 self.opt.step()
 
             if print_progress:
@@ -276,4 +285,3 @@ class SVI():
         
         if print_progress:
             print()
-
