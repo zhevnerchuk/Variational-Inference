@@ -121,10 +121,12 @@ class SVI():
         
         global_samples = [self.var_distr.sample_global() for _ in range(num_samples)]
 
-        global_h = [torch.autograd.grad(self.var_distr.log_likelihood_global(global_samples[s]), 
-                                        self.var_distr.global_parameters,
-                                        retain_graph=True) for s in range(num_samples)]
+        global_h = [handle_nones(torch.autograd.grad(self.var_distr.log_likelihood_global(global_samples[s]), 
+                                                     self.var_distr.global_parameters,
+                                                     retain_graph=True,
+                                                     allow_unused=True)) for s in range(num_samples)]
         
+
         local_samples = []
         for idx in batch_indices:
             local_samples.append([self.var_distr.sample_local(global_samples[s], idx) for s in range(num_samples)])
@@ -138,8 +140,12 @@ class SVI():
                 multiplier += self.prior_distr.log_likelihood_local(local_samples[i][s], beta) + \
                               self.prior_distr.log_likelihood_joint(self.data[idx], local_samples[i][s], beta)
                 
-                local_h[i].append(torch.autograd.grad(self.var_distr.log_likelihood_local(local_samples[i][s], idx), 
-                                                      self.var_distr.local_parameters[idx], retain_graph=True))
+                
+                local_h[i].append(handle_nones(torch.autograd.grad(self.var_distr.log_likelihood_local(local_samples[i][s], idx), 
+                                                                   self.var_distr.local_parameters[idx], 
+                                                                   retain_graph=True,
+                                                                   allow_unused=True)))
+                
                 local_multiplier = self.prior_distr.log_likelihood_local(local_samples[i][s], beta) + \
                                    self.prior_distr.log_likelihood_joint(self.data[idx], local_samples[i][s], beta) - \
                                    self.var_distr.log_likelihood_local(local_samples[i][s], idx)
@@ -285,3 +291,20 @@ class SVI():
         
         if print_progress:
             print()
+
+
+def handle_nones(container):
+    '''Replace all Nones with torch tensors containing one zero
+
+    Args:
+        container: tuple
+
+    Returns:
+        handled_container: container with torch tensor containing 
+            one zero instead of Nones
+
+    '''
+
+    handled_container = tuple(item if item is not None else torch.zeros(1) for item in container)
+    return handled_container
+    
