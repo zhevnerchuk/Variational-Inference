@@ -25,7 +25,62 @@ class SVI():
         self.prior_distr = prior_distr
         self.var_distr = var_distr
         self.opt = opt
-        self.scheduler = scheduler      
+        self.scheduler = scheduler  
+
+
+    def make_inference(self, num_steps=100, num_samples=10, batch_size=10, 
+                       loss='bb1', discounter_schedule=None,
+                       shuffle=False, print_progress=True):
+        '''Making SVI
+        
+        Args:
+            num_steps: int, maximum number of epoches
+            tol: required tolerance
+            num_samples: int, number of samples used for ELBO approximation
+            batch_size: int, size of one batch
+            loss: string, loss function, currently avaliable bb1 or bb2
+            discounter_schedule: used only for 'entropy' loss, None or array-like
+                of size num_steps, discounter_schedule[i] is a discounter for an
+                analytically-computed term at step i 
+            shuffle: boolean, if batch is shuffled every epoch or not
+            print_progress: boolean, if True then progrss bar is printed
+            
+        '''
+        
+        kwargs = lambda x: {}
+        if loss == 'bb1':
+            loss_func = self.bb1_loss_
+        elif loss == 'bb2':
+            loss_func = self.bb2_loss_
+        elif loss == 'entropy':
+        	loss_func = self.entropy_form_loss_
+        	if discounter_schedule:
+        		kwargs = lambda x: {discounter: discounter_schedule[x]}
+        else:
+            raise Exception('No such loss avaliable')
+        
+        for step in range(num_steps):
+            
+            if shuffle:
+                indices = np.random.choice(self.data.shape[0], self.data.shape[0], False)
+            else:
+                indices = np.arange(self.data.shape[0])
+                
+            indices = np.split(indices, np.arange(batch_size, self.data.shape[0], batch_size))
+                
+            for batch_indices in indices:
+                self.opt.zero_grad()
+                loss = loss_func(num_samples, batch_indices, **kwargs[step])
+                loss.backward(retain_graph=True)
+                self.opt.step()
+
+            if print_progress:
+                if (int(100 * step / num_steps) != int(100 * (step - 1) / num_steps)):
+                    print('.', end='')
+        
+        if print_progress:
+            print()
+
 
     def bb1_loss_(self, num_samples, batch_indices):
         '''Computing loss of BB SVI 1
@@ -197,8 +252,43 @@ class SVI():
         loss = -(global_loss + local_loss) / num_samples
         
         return loss
+
+
+    def entropy_form_loss_(self, num_samples, batch_indices, discounter=1):
+        '''Computing ELBO estimator in entropy form
         
+        prior_distr requred methods: 
+            log_likelihood(x, z)
         
+        var_distr required methods: 
+            entropy()
+            sample(idx)
+        
+        Args:
+            num_samples: number of samples used for approximation
+            batch_indices: indices of batch
+            discounter: coefficient of entropy term
+        
+        Returns:
+            loss: ELBO in entropy form estimator
+        
+        '''
+
+        mc_term = torch.zeros(1, requires_grad=True)
+
+        for idx in batch_indices:
+        	for _ in range(num_samples):
+        		z = self.var_distr.sample(idx)
+        		mc_term = mc_term + self.prior_distr.log_likelihood(self.data[idx], z)
+
+        mc_term = mc_term / (num_samples * len(batch_indices))
+        entropy_term = self.var_distr.entropy()
+
+        loss = -mc_term - discounter * entropy_term
+
+        return loss
+
+
     def count_a_(self, h, f):
         '''Given f and h from BB SVI II, computes a* based on an unbiased
            estimators of its components covariances
@@ -247,52 +337,6 @@ class SVI():
         return a
         
         
-
-    def make_inference(self, num_steps=100, num_samples=10, batch_size=10, 
-                       loss='bb1', shuffle=False, print_progress=True):
-        '''Making SVI
-        
-        Args:
-            num_steps: int, maximum number of epoches
-            tol: required tolerance
-            num_samples: int, number of samples used for ELBO approximation
-            batch_size: int, size of one batch
-            loss: string, loss function, currently avaliable bb1 or bb2
-            shuffle: boolean, if batch is shuffled every epoch or not
-            print_progress: boolean, if True then progrss bar is printed
-            
-        '''
-        
-        if loss == 'bb1':
-            loss_func = self.bb1_loss_
-        elif loss == 'bb2':
-            loss_func = self.bb2_loss_
-        else:
-            raise Exception('No such loss avaliable')
-        
-        for step in range(num_steps):
-            
-            if shuffle:
-                indices = np.random.choice(self.data.shape[0], self.data.shape[0], False)
-            else:
-                indices = np.arange(self.data.shape[0])
-                
-            indices = np.split(indices, np.arange(batch_size, self.data.shape[0], batch_size))
-                
-            for batch_indices in indices:
-                self.opt.zero_grad()
-                loss = loss_func(num_samples, batch_indices)
-                loss.backward(retain_graph=True)
-                self.opt.step()
-
-            if print_progress:
-                if (int(100 * step / num_steps) != int(100 * (step - 1) / num_steps)):
-                    print('.', end='')
-        
-        if print_progress:
-            print()
-
-
 def handle_nones(container):
     '''Replace all Nones with torch tensors containing one zero
 
