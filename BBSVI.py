@@ -53,6 +53,9 @@ class SVI():
 
             'entropy': {'prior_distr' : ['log_likelihood_global', 'log_likelihood_joint'], 
                         'var_distr' : ['entropy', 'sample_global', 'sample_local']},
+
+            'kl': {'prior_distr' : ['log_likelihood_cond'],
+                    'var_distr' : ['sample_global', 'sample_local']}
         }
 
         flag = True
@@ -84,8 +87,8 @@ class SVI():
 
 
     def make_inference(self, num_steps=100, num_samples=10, batch_size=10, 
-                       loss='bb1', discounter_schedule=None,
-                       shuffle=False, print_progress=True):
+                       loss='bb1', discounter_schedule=None, kl=None,
+                       shuffle=False, print_progress=True, callback=None):
         '''Making SVI
         
         Args:
@@ -97,8 +100,11 @@ class SVI():
             discounter_schedule: used only for 'entropy' loss, None or torch tensor
                 of size num_steps, discounter_schedule[i] is a discounter for an
                 analytically-computed term at step i 
+            kl: None or callable, compute KL divergency between variational and prior distributions,
+                required only for 'kl' loss
             shuffle: boolean, if batch is shuffled every epoch or not
             print_progress: boolean, if True then progrss bar is printed
+            callback: None or callable, if not None, applied to loss after every iteration
             
         '''
 
@@ -117,6 +123,15 @@ class SVI():
         	loss_func = self.entropy_form_loss_
         	if discounter_schedule is not None:
         		kwargs = lambda x: {'discounter': discounter_schedule[x]}
+        elif loss == 'kl':
+        	loss_func = self.kl_form_loss_
+        	if kl is not None:
+        		if discounter_schedule is not None:
+        		     kwargs = lambda x: {'kl': kl, 'discounter': discounter_schedule[x]}
+        		else:
+        			kwargs = lambda x: {'kl': kl}
+        	else:
+        		raise Exception('You should provide a function computing KL-divergency to use \'kl\' loss')
         
 
         for step in range(num_steps):
@@ -131,6 +146,8 @@ class SVI():
             for batch_indices in indices:
                 self.opt.zero_grad()
                 loss = loss_func(num_samples, batch_indices, **kwargs(step))
+                if callback is not None:
+                	callback(loss)
                 loss.backward(retain_graph=True)
                 self.opt.step()
 
@@ -312,6 +329,49 @@ class SVI():
                     
         loss = -(global_loss + local_loss) / num_samples
         
+        return loss
+
+
+    def kl_form_loss_(self, num_samples, batch_indices, kl, discounter=1):
+        '''Computing ELBO estimator in Kullback–Leibler divergence form
+        
+        prior_distr requred methods: 
+            log_likelihood_cond(x, z, beta)
+        
+        var_distr required methods: 
+            sample_global()
+            sample_local(beta, idx)
+        
+        Args:
+            num_samples: number of samples used for approximation
+            batch_indices: indices of batch
+            kl: callable, function which computes KL divergence beetween
+                variational and prior
+            discounter: coefficient of KL term
+        
+        Returns:
+            loss: ELBO in KL form estimator
+        
+        '''
+
+        mc_term = torch.zeros(1, requires_grad=True)
+        
+        for _ in range(num_samples):
+            beta = self.var_distr.sample_global()
+            sample_log_likelihood = torch.zeros(1, requires_grad=True)
+            for idx in batch_indices:
+                z = self.var_distr.sample_local(beta, idx)
+                sample_log_likelihood = sample_log_likelihood + \
+                                        self.prior_distr.log_likelihood_cond(self.data[idx], z, beta)
+            sample_log_likelihood = sample_log_likelihood * self.data.shape[0] / batch_indices.size
+            
+            mc_term = mc_term + sample_log_likelihood
+
+        mc_term = mc_term / num_samples
+        kl_term = kl(self.var_distr, self.prior_distr)
+
+        loss = -mc_term + discounter * kl_term
+
         return loss
 
 
