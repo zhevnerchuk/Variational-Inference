@@ -88,7 +88,8 @@ class SVI():
 
     def make_inference(self, num_steps=100, num_samples=10, batch_size=10, 
                        loss='bb1', discounter_schedule=None, kl=None,
-                       shuffle=False, print_progress=True, callback=None):
+                       shuffle=False, print_progress=True, callback=None,
+                       retain_graph=False):
         '''Making SVI
         
         Args:
@@ -105,7 +106,8 @@ class SVI():
             shuffle: boolean, if batch is shuffled every epoch or not
             print_progress: boolean, if True then progrss bar is printed
             callback: None or callable, if not None, applied to loss after every iteration
-            
+            retain_graph: boolean, passed to loss.backward()
+
         '''
 
         flag, message, methods_to_implement = self.check_methods(loss)
@@ -148,7 +150,7 @@ class SVI():
                 loss = loss_func(num_samples, batch_indices, **kwargs(step))
                 if callback is not None:
                 	callback(loss)
-                loss.backward(retain_graph=True)
+                loss.backward(retain_graph=retain_graph)
                 self.opt.step()
 
             if print_progress:
