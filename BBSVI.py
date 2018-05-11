@@ -153,6 +153,10 @@ class SVI():
                 loss.backward(retain_graph=retain_graph)
                 self.opt.step()
 
+            if self.scheduler is not None:
+            	self.scheduler.step()
+
+
             if print_progress:
                 if (int(100 * step / num_steps) != int(100 * (step - 1) / num_steps)):
                     print('.', end='')
