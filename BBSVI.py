@@ -1,6 +1,7 @@
 import torch
 import operator
 import numpy as np
+from collections import defaultdict
 
 
 class SVI():
@@ -28,6 +29,60 @@ class SVI():
         self.scheduler = scheduler  
 
 
+    def check_methods(self, loss):
+
+        """Check if provided model supports loss
+        
+        Args:
+            loss: string, name of loss
+
+        Returns:
+            flag: boolean, if model supports loss
+            message: string, error source if model does not support loss
+            methods_to_implement: dict, methods to implement if model does not support loss
+
+        """
+
+        methods = { 
+            'bb1': {'prior_distr' : ['log_likelihood_global', 'log_likelihood_local', 'log_likelihood_joint'], 
+                    'var_distr' : ['log_likelihood_global', 'log_likelihood_local', 'sample_global', 'sample_local']},
+
+            'bb2': {'prior_distr' : ['log_likelihood_global', 'log_likelihood_local', 'log_likelihood_joint'], 
+                    'var_distr' : ['log_likelihood_global', 'log_likelihood_local', 'sample_global', 'sample_local', 
+                                  'global_parameters', 'local_parameters']},
+
+            'entropy': {'prior_distr' : ['log_likelihood_global', 'log_likelihood_joint'], 
+                        'var_distr' : ['entropy', 'sample_global', 'sample_local']},
+        }
+
+        flag = True
+        message = "OK"
+        methods_to_implement = defaultdict(list)
+
+        try:
+
+            cur_loss = methods[loss]
+
+            for prior_method in cur_loss['prior_distr']:
+                if not hasattr(self.prior_distr, prior_method):
+                    methods_to_implement['prior_distr'].append(prior_method)
+
+            for var_method in cur_loss['var_distr']:
+                if not hasattr(self.var_distr, var_method):
+                    methods_to_implement['var_distr'].append(var_method)
+
+        except KeyError:
+            flag = False
+            message = "We does not support this loss: {0}".format(loss)
+
+        if methods_to_implement:
+            flag = False
+
+            message = "The following methods should be implemented:"
+
+        return flag, message, methods_to_implement
+
+
     def make_inference(self, num_steps=100, num_samples=10, batch_size=10, 
                        loss='bb1', discounter_schedule=None,
                        shuffle=False, print_progress=True):
@@ -39,13 +94,19 @@ class SVI():
             num_samples: int, number of samples used for ELBO approximation
             batch_size: int, size of one batch
             loss: string, loss function, currently avaliable bb1 or bb2
-            discounter_schedule: used only for 'entropy' loss, None or array-like
+            discounter_schedule: used only for 'entropy' loss, None or torch tensor
                 of size num_steps, discounter_schedule[i] is a discounter for an
                 analytically-computed term at step i 
             shuffle: boolean, if batch is shuffled every epoch or not
             print_progress: boolean, if True then progrss bar is printed
             
         '''
+
+        flag, message, methods_to_implement = self.check_methods(loss)
+        if not flag:
+        	raise Exception(message + '\n' + \
+        		 '\n'.join([key + ':\t' + \
+        		 ', '.join(methods_to_implement[key]) for key in methods_to_implement.keys()]))
         
         kwargs = lambda x: {}
         if loss == 'bb1':
@@ -54,11 +115,10 @@ class SVI():
             loss_func = self.bb2_loss_
         elif loss == 'entropy':
         	loss_func = self.entropy_form_loss_
-        	if discounter_schedule:
-        		kwargs = lambda x: {discounter: discounter_schedule[x]}
-        else:
-            raise Exception('No such loss avaliable')
+        	if discounter_schedule is not None:
+        		kwargs = lambda x: {'discounter': discounter_schedule[x]}
         
+
         for step in range(num_steps):
             
             if shuffle:
@@ -70,7 +130,7 @@ class SVI():
                 
             for batch_indices in indices:
                 self.opt.zero_grad()
-                loss = loss_func(num_samples, batch_indices, **kwargs[step])
+                loss = loss_func(num_samples, batch_indices, **kwargs(step))
                 loss.backward(retain_graph=True)
                 self.opt.step()
 
@@ -80,6 +140,7 @@ class SVI():
         
         if print_progress:
             print()
+
 
 
     def bb1_loss_(self, num_samples, batch_indices):
@@ -258,11 +319,13 @@ class SVI():
         '''Computing ELBO estimator in entropy form
         
         prior_distr requred methods: 
-            log_likelihood(x, z)
+            log_likelihood_global(beta)
+            log_likelihood_joint(x, z, beta)
         
         var_distr required methods: 
             entropy()
-            sample(idx)
+            sample_global()
+            sample_local(beta, idx)
         
         Args:
             num_samples: number of samples used for approximation
@@ -275,13 +338,20 @@ class SVI():
         '''
 
         mc_term = torch.zeros(1, requires_grad=True)
+        
+        for _ in range(num_samples):
+            beta = self.var_distr.sample_global()
+            sample_log_likelihood = torch.zeros(1, requires_grad=True)
+            for idx in batch_indices:
+                z = self.var_distr.sample_local(beta, idx)
+                sample_log_likelihood = sample_log_likelihood + \
+                                        self.prior_distr.log_likelihood_joint(self.data[idx], z, beta)
+            sample_log_likelihood = sample_log_likelihood * self.data.shape[0] / batch_indices.size
+            sample_log_likelihood = sample_log_likelihood + self.prior_distr.log_likelihood_global(beta)
 
-        for idx in batch_indices:
-        	for _ in range(num_samples):
-        		z = self.var_distr.sample(idx)
-        		mc_term = mc_term + self.prior_distr.log_likelihood(self.data[idx], z)
+            mc_term = mc_term + sample_log_likelihood
 
-        mc_term = mc_term / (num_samples * len(batch_indices))
+        mc_term = mc_term / num_samples
         entropy_term = self.var_distr.entropy()
 
         loss = -mc_term - discounter * entropy_term
