@@ -346,7 +346,7 @@ class SVI():
             num_samples: number of samples used for approximation
             batch_indices: indices of batch
             kl: callable, function which computes KL divergence beetween
-                variational and prior
+                variational and prior based on based indices
             discounter: coefficient of KL term
         
         Returns:
@@ -368,7 +368,7 @@ class SVI():
             mc_term = mc_term + sample_log_likelihood
 
         mc_term = mc_term / num_samples
-        kl_term = kl(self.var_distr, self.prior_distr)
+        kl_term = kl(self.var_distr, self.prior_distr, batch_indices)
 
         loss = -mc_term + discounter * kl_term
 
