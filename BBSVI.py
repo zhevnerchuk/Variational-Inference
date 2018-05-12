@@ -489,32 +489,36 @@ def handle_nones(container):
     return handled_container
 
 class HistoryCollector():
+    '''A simple class which is helpful to collect loss history of SVI
     
-    def __init__(self, num_samples, batch_size=10):
+    Args:
+        data_size: int, number of data points
+        batch_size: int, batch_size for SVI
+    
+    '''
+    
+    def __init__(self, data_size, batch_size=10):
         
-        self.num_samples = num_samples
-        
-        self.batch_size = batch_size
-        
-        self.size = self.num_samples // self.batch_size + bool(self.num_samples % self.batch_size)
-        
+        self.data_size = data_size        
+        self.batch_size = batch_size        
+        self.size = self.data_size // self.batch_size + bool(self.data_size % self.batch_size)
         self.counter = 0
-        
         self.history = []
-        
         self.history_per_epoch = []
-        
-    
+            
     def collect_history(self, loss):
+        '''Saving loss, can be passed as callback arg to SVI.make_inference
+        
+        Args:
+            loss: torch.tensor, loss
+        
+        '''
+        
         
         self.history_per_epoch.append(float(loss))
-        
         self.counter += 1
-        
         if self.counter == self.size:
-            
             self.counter = 0
             self.history.append(np.mean(self.history_per_epoch))
-            self.history_per_epoch = []
-            
+            self.history_per_epoch = []    
         pass
