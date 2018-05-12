@@ -9,7 +9,7 @@ Then execute the following command to run it:
 
     sudo docker run -p 9999:8888 -it zhmar:latest
 
-You can find documenatation for this library in file ![ZhMaR.pdf](https://github.com/zhevnerchuk/Variational-Inference/blob/master/ZhMAR_docs.pdf)
+You can find documenatation for this library in file ![ZhMaR.pdf](https://github.com/zhevnerchuk/Variational-Inference/blob/master/ZhMAR_docs.pdf).
 
 **Team:**
   * Sergey Makarychev
