@@ -13,6 +13,7 @@ Then execute the following command to run it:
   * Sergey Makarychev
   * Aleksandr Rozhnov
   * Anton Zhevnerchuk
+  
 
 **Постановка задачи:**
 
