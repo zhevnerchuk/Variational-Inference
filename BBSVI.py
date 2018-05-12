@@ -76,7 +76,7 @@ class SVI():
 
         except KeyError:
             flag = False
-            message = "We does not support this loss: {0}".format(loss)
+            message = "We do not support this loss: {0}".format(loss)
 
         if methods_to_implement:
             flag = False
