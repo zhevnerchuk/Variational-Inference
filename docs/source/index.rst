@@ -21,6 +21,12 @@ ZhMaR
 Variational Inference
 =====================
 
+
+    .. automodule:: BBSVI
+        :members:
+        :undoc-members:
+        :show-inheritance:
+
     Consider hierarchical probabilistic model 
 
         .. math::
