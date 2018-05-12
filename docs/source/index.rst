@@ -18,6 +18,7 @@ Variational Inference
 =====================
 
 Consider hierarchical probabilistic model 
+
 .. math::
 
     p_{\theta}(x_i, z_i, \beta) = p_{\theta}(x_i | z_i, \beta) p_\theta(z_i | \beta) p_{\theta}(\beta),
