@@ -3,13 +3,16 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to ZhMaR's documentation!
+ZhMaR
 =================================
+
+ZhMaR is a ```PyTorch```-based wrapper to conduct Stochastical Variational Inference with an arbitary probabilistic model.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+    license
 
+   :caption: Contents:
 
 
 Indices and tables
