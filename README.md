@@ -1,6 +1,13 @@
 # Variational-Inference
 Project for LSML course at YSDA
 
+If you want to intsall via Docker, download folder `docker`, when build Docker Image from it via terminal:
+
+    sudo docker build -t zhmar -f Dockerfile .
+    
+Then execute the following command to run it:
+
+    sudo docker run -p 9999:8888 -it zhmar:latest
 
 **Team:**
   * Sergey Makarychev
