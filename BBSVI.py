@@ -338,6 +338,50 @@ class SVI():
         return loss
 
 
+    def entropy_form_loss_(self, num_samples, batch_indices, discounter=1):
+        '''Computing ELBO estimator in entropy form
+        
+        prior_distr requred methods: 
+            log_likelihood_global(beta)
+            log_likelihood_joint(x, z, beta)
+        
+        var_distr required methods: 
+            entropy(batch_indices)
+            sample_global()
+            sample_local(beta, idx)
+        
+        Args:
+            num_samples: number of samples used for approximation
+            batch_indices: indices of batch
+            discounter: coefficient of entropy term
+        
+        Returns:
+            loss: ELBO in entropy form estimator
+        
+        '''
+
+        mc_term = torch.zeros(1, requires_grad=True)
+        
+        for _ in range(num_samples):
+            beta = self.var_distr.sample_global()
+            sample_log_likelihood = torch.zeros(1, requires_grad=True)
+            for idx in batch_indices:
+                z = self.var_distr.sample_local(beta, idx)
+                sample_log_likelihood = sample_log_likelihood + \
+                                        self.prior_distr.log_likelihood_joint(self.data[idx], z, beta)
+            sample_log_likelihood = sample_log_likelihood * self.data.shape[0] / batch_indices.size
+            sample_log_likelihood = sample_log_likelihood + self.prior_distr.log_likelihood_global(beta)
+
+            mc_term = mc_term + sample_log_likelihood
+
+        mc_term = mc_term / num_samples
+        entropy_term = self.var_distr.entropy(batch_indices)
+
+        loss = -mc_term - discounter * entropy_term
+
+        return loss
+
+
     def kl_form_loss_(self, num_samples, batch_indices, kl, discounter=1):
         '''Computing ELBO estimator in Kullback–Leibler divergence form
         
@@ -379,51 +423,6 @@ class SVI():
         loss = -mc_term + discounter * kl_term
 
         return loss
-
-
-    def entropy_form_loss_(self, num_samples, batch_indices, discounter=1):
-        '''Computing ELBO estimator in entropy form
-        
-        prior_distr requred methods: 
-            log_likelihood_global(beta)
-            log_likelihood_joint(x, z, beta)
-        
-        var_distr required methods: 
-            entropy()
-            sample_global()
-            sample_local(beta, idx)
-        
-        Args:
-            num_samples: number of samples used for approximation
-            batch_indices: indices of batch
-            discounter: coefficient of entropy term
-        
-        Returns:
-            loss: ELBO in entropy form estimator
-        
-        '''
-
-        mc_term = torch.zeros(1, requires_grad=True)
-        
-        for _ in range(num_samples):
-            beta = self.var_distr.sample_global()
-            sample_log_likelihood = torch.zeros(1, requires_grad=True)
-            for idx in batch_indices:
-                z = self.var_distr.sample_local(beta, idx)
-                sample_log_likelihood = sample_log_likelihood + \
-                                        self.prior_distr.log_likelihood_joint(self.data[idx], z, beta)
-            sample_log_likelihood = sample_log_likelihood * self.data.shape[0] / batch_indices.size
-            sample_log_likelihood = sample_log_likelihood + self.prior_distr.log_likelihood_global(beta)
-
-            mc_term = mc_term + sample_log_likelihood
-
-        mc_term = mc_term / num_samples
-        entropy_term = self.var_distr.entropy()
-
-        loss = -mc_term - discounter * entropy_term
-
-        return loss
-
 
     def count_a_(self, h, f):
         '''Given f and h from BB SVI II, computes a* based on an unbiased
