@@ -487,4 +487,34 @@ def handle_nones(container):
 
     handled_container = tuple(item if item is not None else torch.zeros(1) for item in container)
     return handled_container
+
+class HistoryCollector():
     
+    def __init__(self, num_samples, batch_size=10):
+        
+        self.num_samples = num_samples
+        
+        self.batch_size = batch_size
+        
+        self.size = self.num_samples // self.batch_size + bool(self.num_samples % self.batch_size)
+        
+        self.counter = 0
+        
+        self.history = []
+        
+        self.history_per_epoch = []
+        
+    
+    def collect_history(self, loss):
+        
+        self.history_per_epoch.append(float(loss))
+        
+        self.counter += 1
+        
+        if self.counter == self.size:
+            
+            self.counter = 0
+            self.history.append(np.mean(self.history_per_epoch))
+            self.history_per_epoch = []
+            
+        pass
