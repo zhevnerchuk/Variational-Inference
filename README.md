@@ -10,10 +10,7 @@ Then execute the following command to run it:
 
 You can find documenatation for this library in file ![ZhMaR.pdf](https://github.com/zhevnerchuk/Variational-Inference/blob/master/ZhMAR_docs.pdf).
 
-**Team:**
-  * Sergey Makarychev
-  * Aleksandr Rozhnov
-  * Anton Zhevnerchuk
+Below is a short intro into Variational Inference in Russian. There is one in English in documentation.
 
 **Постановка задачи:**
 
@@ -38,3 +35,10 @@ You can find documenatation for this library in file ![ZhMaR.pdf](https://github
 Существующие библиотеки для Вариационного Вывода:
   * [Edward](http://edwardlib.org/) (работает с TensorFlow и Keras)
   * [Pyro](http://pyro.ai/) (работает с PyTorch)
+  
+
+**Team:**
+  * Sergey Makarychev
+  * Aleksandr Rozhnov
+  * Anton Zhevnerchuk
+  
